@@ -1,25 +1,20 @@
+import moment = require('moment');
 import { TDocumentDefinitions } from 'pdfmake/interfaces';
 import { base64Logo } from './assets/logo64';
 
-interface LoanProps {
-  id: number;
-  contrato: any;
-  nroParcela: number;
-  balanceAfterPayment: number;
-  dataPagamento: Date;
-  dataPagamentoPaga: Date;
-  diasPrimeiraParcela: number;
-  diasProximaParcela: number;
-  diasProximaParcelaOriginal: number;
-  valorTotalJurosLoan: number;
-  vlParcelaSemJuros: number;
-  idContrato: number;
-  situacao: string;
-  vlParcela: number;
-  vlParcelaJuros: number;
+interface ReportProps {
+  observation: string;
+  filtros: any;
+  itens: any[],
+  totalPayments: number;
+  totalInterests: number;
+  totalPrincipalPayments: number;
 }
 
-export function createPdf(loansList: LoanProps[]): TDocumentDefinitions {
+export function createPdfContracts(report: ReportProps): TDocumentDefinitions {
+
+  const rows = createTableRows(report);
+
   const dd: TDocumentDefinitions = {
     content: [
       {
@@ -31,7 +26,7 @@ export function createPdf(loansList: LoanProps[]): TDocumentDefinitions {
           },
           [
             {
-              text: 'CHECK NUMBER',
+              text: 'GOL LOAN REPORT',
               color: '#333333',
               width: '*',
               fontSize: 28,
@@ -52,7 +47,7 @@ export function createPdf(loansList: LoanProps[]): TDocumentDefinitions {
                       alignment: 'right',
                     },
                     {
-                      text: loansList[0].contrato.banco.nome,
+                      text: report.filtros.partnerName,
                       bold: true,
                       color: '#333333',
                       fontSize: 12,
@@ -64,7 +59,7 @@ export function createPdf(loansList: LoanProps[]): TDocumentDefinitions {
                 {
                   columns: [
                     {
-                      text: 'Data Inicial',
+                      text: 'Start date',
                       color: '#aaaaab',
                       bold: true,
                       width: '*',
@@ -72,7 +67,7 @@ export function createPdf(loansList: LoanProps[]): TDocumentDefinitions {
                       alignment: 'right',
                     },
                     {
-                      text: 'June 01, 2016',
+                      text: report.filtros.initDate,
                       bold: true,
                       color: '#333333',
                       fontSize: 12,
@@ -84,7 +79,7 @@ export function createPdf(loansList: LoanProps[]): TDocumentDefinitions {
                 {
                   columns: [
                     {
-                      text: 'DATA FINAL',
+                      text: 'Final date',
                       color: '#aaaaab',
                       bold: true,
                       fontSize: 12,
@@ -92,11 +87,11 @@ export function createPdf(loansList: LoanProps[]): TDocumentDefinitions {
                       width: '*',
                     },
                     {
-                      text: 'DATA FINAL',
+                      text: report.filtros.finalDate,
                       bold: true,
-                      fontSize: 14,
+                      color: '#333333',
+                      fontSize: 12,
                       alignment: 'right',
-                      color: 'green',
                       width: 100,
                     },
                   ],
@@ -104,7 +99,7 @@ export function createPdf(loansList: LoanProps[]): TDocumentDefinitions {
                 {
                   columns: [
                     {
-                      text: 'DATA FINAL',
+                      text: 'Situation',
                       color: '#aaaaab',
                       bold: true,
                       fontSize: 12,
@@ -112,11 +107,11 @@ export function createPdf(loansList: LoanProps[]): TDocumentDefinitions {
                       width: '*',
                     },
                     {
-                      text: 'DATA FINAL',
+                      text: report.filtros.status,
                       bold: true,
-                      fontSize: 14,
+                      color: '#333333',
+                      fontSize: 12,
                       alignment: 'right',
-                      color: 'green',
                       width: 100,
                     },
                   ],
@@ -130,7 +125,7 @@ export function createPdf(loansList: LoanProps[]): TDocumentDefinitions {
       {
         width: 100,
         alignment: 'center',
-        text: 'CHECK NUMBER',
+        text: 'LOANS ON REPORT',
         margin: [0, 10, 0, 10],
         fontSize: 15,
       },
@@ -164,12 +159,13 @@ export function createPdf(loansList: LoanProps[]): TDocumentDefinitions {
         },
         table: {
           headerRows: 1,
-          widths: [40,40,20,25,'*',50,50,50,'*','*',50,'*'],
+          widths: ['*','*','*','*','*','*','*'],
           body: [
             [
               {
                 text: 'PARTNER',
                 fillColor: '#eaf2f5',
+                alignment: 'center',
                 border: [false, true, false, true],
                 textTransform: 'uppercase',
                 fontSize: 9,
@@ -177,45 +173,13 @@ export function createPdf(loansList: LoanProps[]): TDocumentDefinitions {
               {
                 text: 'STOCK',
                 border: [false, true, false, true],
-                alignment: 'right',
-                fillColor: '#eaf2f5',
-                textTransform: 'uppercase',
-                fontSize: 9,
-              },
-              {
-                text: '#',
-                border: [false, true, false, true],
-                alignment: 'right',
-                fillColor: '#eaf2f5',
-                textTransform: 'uppercase',
-                fontSize: 9,
-              },
-              {
-                text: 'DAYS',
-                border: [false, true, false, true],
                 alignment: 'center',
                 fillColor: '#eaf2f5',
                 textTransform: 'uppercase',
                 fontSize: 9,
               },
               {
-                text: 'DUE DATE',
-                border: [false, true, false, true],
-                alignment: 'center',
-                fillColor: '#eaf2f5',
-                textTransform: 'uppercase',
-                fontSize: 9,
-              },
-              {
-                text: 'INTEREST',
-                border: [false, true, false, true],
-                alignment: 'center',
-                fillColor: '#eaf2f5',
-                textTransform: 'uppercase',
-                fontSize: 9,
-              },
-              {
-                text: 'PRINCIPAL',
+                text: 'DATE',
                 border: [false, true, false, true],
                 alignment: 'center',
                 fillColor: '#eaf2f5',
@@ -231,15 +195,7 @@ export function createPdf(loansList: LoanProps[]): TDocumentDefinitions {
                 fontSize: 9,
               },
               {
-                text: 'PRINCIPAL PAYMENT',
-                border: [false, true, false, true],
-                alignment: 'center',
-                fillColor: '#eaf2f5',
-                textTransform: 'uppercase',
-                fontSize: 9,
-              },
-              {
-                text: 'PRINCIPAL BALANCE',
+                text: 'TOTAL PAYMENT',
                 border: [false, true, false, true],
                 alignment: 'center',
                 fillColor: '#eaf2f5',
@@ -263,20 +219,65 @@ export function createPdf(loansList: LoanProps[]): TDocumentDefinitions {
                 fontSize: 9,
               },
             ],
+
+            ...rows
           ],
         },
       },
       '\n',
-      '\n\n',
-      '\n\n',
+
       {
-        text: 'NOTES',
-        style: 'notesTitle',
+        columns: [
+          {
+            text: `Observation: ${report.observation} \n Report made in: ${moment().format('YYYY-MM-DD hh:mm')}`,
+            style: 'notesTitle',
+          },
+          [
+            {
+              columns: [
+                {
+                  text: 'Total loans',
+                  color: '#aaaaab',
+                  bold: true,
+                  width: '*',
+                  fontSize: 12,
+                  alignment: 'right',
+                },
+                {
+                  text: String(report.itens.length),
+                  bold: true,
+                  color: '#333333',
+                  fontSize: 12,
+                  alignment: 'right',
+                  width: 100,
+                },
+              ],
+            },
+            {
+              columns: [
+                {
+                  text: 'Total Payments',
+                  color: '#aaaaab',
+                  bold: true,
+                  width: '*',
+                  fontSize: 12,
+                  alignment: 'right',
+                },
+                {
+                  text: formatter.format(report.totalPayments),
+                  bold: true,
+                  color: '#333333',
+                  fontSize: 12,
+                  alignment: 'right',
+                  width: 100,
+                },
+              ],
+            },
+          ]
+        ],
       },
-      {
-        text: 'Report made in \n date',
-        style: 'notesText',
-      },
+      '\n\n',
+      '\n\n'
     ],
     styles: {
       notesTitle: {
@@ -287,6 +288,10 @@ export function createPdf(loansList: LoanProps[]): TDocumentDefinitions {
       notesText: {
         fontSize: 10,
       },
+      infoStyle: {
+        fontSize: 10,
+        bold: true
+      }
     },
     defaultStyle: {
       columnGap: 20,
@@ -298,3 +303,77 @@ export function createPdf(loansList: LoanProps[]): TDocumentDefinitions {
 
   return dd;
 }
+
+function createTableRows(report: ReportProps): any[] {
+  const rows = report.itens.map(createRow);
+
+  return rows;
+}
+
+function createRow(contract): any[] {
+  const rowDefinition: any = [ 
+    {
+      text: contract.banco.nome,
+      fillColor: '#ffffff',
+      alignment: 'center',
+      border: [false, true, false, true],
+      textTransform: 'uppercase',
+      fontSize: 8,
+    },
+    {
+      text: contract.stockId,
+      border: [false, true, false, true],
+      alignment: 'center',
+      fillColor: '#ffffff',
+      textTransform: 'uppercase',
+      fontSize: 8,
+    },
+    {
+      text: contract.dataInicioContrato,
+      border: [false, true, false, true],
+      alignment: 'center',
+      fillColor: '#ffffff',
+      textTransform: 'uppercase',
+      fontSize: 8,
+    },
+    {
+      text: formatter.format(contract.valorParcela),
+      border: [false, true, false, true],
+      alignment: 'center',
+      fillColor: '#ffffff',
+      textTransform: 'uppercase',
+      fontSize: 8,
+    },
+    {
+      text: formatter.format(contract.totalPagar),
+      border: [false, true, false, true],
+      alignment: 'center',
+      fillColor: '#ffffff',
+      textTransform: 'uppercase',
+      fontSize: 8,
+    },
+    {
+      text: contract.paidWithPayOff ? 'Pay-off' : contract.situacao,
+      border: [false, true, false, true],
+      alignment: 'center',
+      fillColor: '#ffffff',
+      textTransform: 'uppercase',
+      fontSize: 8,
+    },
+    {
+      text: contract.dataPagamentoParcela,
+      border: [false, true, false, true],
+      alignment: 'center',
+      fillColor: '#ffffff',
+      textTransform: 'uppercase',
+      fontSize: 8,
+    },
+  ]
+
+  return rowDefinition;
+}
+
+const formatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+});

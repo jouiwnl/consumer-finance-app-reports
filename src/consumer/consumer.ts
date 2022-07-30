@@ -1,6 +1,5 @@
 import * as amqp from 'amqplib';
 import * as dotenv from 'dotenv';
-import * as fs from 'fs';
 
 import * as pdfMake from 'pdfmake/build/pdfmake.js';
 import * as pdfFonts from 'pdfmake/build/vfs_fonts.js';
@@ -10,80 +9,89 @@ import { Report } from '../entity/Report';
 
 import * as AWS from 'aws-sdk';
 import * as moment from 'moment';
-import { createPdf } from './createDocumentDefinitions';
+import { createPdfParcelas } from './createDDPArcelas';
+import { createPdfContracts } from './createDDContracts';
+import { TDocumentDefinitions } from 'pdfmake/interfaces';
 
 (<any>pdfMake).vfs = pdfFonts.pdfMake.vfs;
 
 dotenv.config();
 
-interface LoanProps {
-  id: number;
-  contrato: any;
-  nroParcela: number;
-  balanceAfterPayment: number;
-  dataPagamento: Date;
-  dataPagamentoPaga: Date;
-  diasPrimeiraParcela: number;
-  diasProximaParcela: number;
-  diasProximaParcelaOriginal: number;
-  valorTotalJurosLoan: number;
-  vlParcelaSemJuros: number;
-  idContrato: number;
-  situacao: string;
-  vlParcela: number;
-  vlParcelaJuros: number;
+interface ReportProps {
+  observation: string;
+  filtros: any;
+  itens: any[],
+  totalPayments: number;
+  totalInterests: number;
+  totalPrincipalPayments: number;
+  type: string;
 }
 
 export default async function() {
-  const connection = await amqp.connect(process.env.RABBIT_MQ_ADDRESS, "heartbeat=60");
-  const channel = await connection.createChannel();
-  const queue = "finance-app-report";
+  try { 
+    const connection = await amqp.connect(process.env.RABBIT_MQ_ADDRESS, "heartbeat=60");
+    const channel = await connection.createChannel();
+    const queue = "finance-app-report";
 
-  const reportRepository = AppDataSource.getRepository(Report);
+    const reportRepository = AppDataSource.getRepository(Report);
 
-  await connection.createChannel();
+    await connection.createChannel();
 
-  await channel.assertQueue(queue, { durable: true });
-  await channel.consume(queue, async (mensagem) => {
-    const report: LoanProps[] = JSON.parse(mensagem.content.toString());
+    await channel.assertQueue(queue, { durable: true });
+    await channel.consume(queue, async (mensagem) => {
+      const report: ReportProps = await JSON.parse(mensagem.content.toString());
+      const definitions: TDocumentDefinitions = report.type === 'P'
+        ? createPdfParcelas(report)
+        : createPdfContracts(report);
 
-    pdfMake.createPdf(createPdf(report)).getBuffer(document => {
-      fs.writeFile('report.pdf', document, async (err) => {
-        if (err) throw err
+      pdfMake.createPdf(definitions).getBuffer(async document => {
+        const s3 = createAwsInstance();
+        const archive = await uploadFile(`report${moment().format('YYYY-MM-DD hh:mm:ss')}.pdf`, document);
 
-        const url = await uploadFile(`report-${moment().format('YYYY-MM-DD')}.pdf`, './report.pdf');
-        
-        const report = new Report();
-        report.s3Key = url;
+        const presigned = s3.getSignedUrl('getObject', {
+          Bucket: archive.Bucket,
+          Key: archive.Key,
+          Expires: 2592000
+        })
 
-        await reportRepository.save(report).then(() => {
+        let saved = new Report();
+        saved.path = archive.Location;
+        saved.observation = report.observation;
+        saved.type = report.type;
+        saved.presigned_url = presigned;
+
+        await reportRepository.save(saved).then(() => {
           console.log('report saved with success');
-        }).then(() => {
-          //fs.unlinkSync('report.pdf');
+        }).catch(err => {
+          console.log(err)
         });
       });
-    });
-  
-    channel.ack(mensagem);
-  })
+    
+      channel.ack(mensagem);
+    })
+  } catch(error) {
+    console.log("Houve um erro: " + error);
+  }
 }
 
-async function uploadFile(fileName, filePath) {
-
-  const s3 = new AWS.S3({
+function createAwsInstance() {
+  return new AWS.S3({
     apiVersion: '2006-03-01',
     region: process.env.AWS_REGION
-  })
+  });
+}
 
-  const fileContent = fs.readFileSync(filePath);
+async function uploadFile(fileName: string, fileBuffer: Buffer) {
+  const s3 = createAwsInstance();
 
   const params = {
     Bucket: process.env.AWS_S3_BUCKET,
     Key: fileName,
-    Body: fileContent,
+    Body: fileBuffer,
     //ContentType: mimeType//geralmente se acha sozinho
   };
 
   const data = await s3.upload(params).promise();
-  return data.Location;
+
+  return data;
 }

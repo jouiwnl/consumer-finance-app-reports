@@ -6,8 +6,17 @@ export class Report {
     @PrimaryGeneratedColumn()
     id: number
 
-    @Column()
-    s3Key: string
+    @Column({ nullable: true })
+    path: string
+
+    @Column({ nullable: true })
+    type: string;
+
+    @Column({ nullable: true })
+    observation: string;
+
+    @Column({ nullable: true })
+    presigned_url: string;
 
     @CreateDateColumn()
     created_at: Date
