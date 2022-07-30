@@ -3,7 +3,7 @@ import app from './server/server';
 import consumer from './consumer/consumer';
 
 AppDataSource.initialize().then(async () => {
-    app.listen(3000, () => {
+    app.listen(process.env.PORT || 3000, () => {
         console.log('server opened');
         consumer();
     });
