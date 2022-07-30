@@ -59,6 +59,7 @@ export default async function() {
         saved.observation = report.observation;
         saved.type = report.type;
         saved.presigned_url = presigned;
+        saved.created_at = moment().toDate();
 
         await reportRepository.save(saved).then(() => {
           console.log('report saved with success');

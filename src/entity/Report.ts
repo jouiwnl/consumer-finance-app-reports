@@ -18,6 +18,6 @@ export class Report {
     @Column({ nullable: true })
     presigned_url: string;
 
-    @CreateDateColumn()
+    @Column({ nullable: true })
     created_at: Date
 }
