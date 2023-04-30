@@ -1,10 +1,17 @@
-import { AppDataSource } from "./data-source"
+import logger from './logger/index'
 import app from './server/server';
 import consumer from './consumer/consumer';
 
-AppDataSource.initialize().then(async () => {
-    app.listen(process.env.PORT || 3000, () => {
-        console.log('server opened');
-        consumer();
+app.listen(process.env.PORT || 3000, () => {
+    logger.info('Server running...');
+    consumer().start();
+
+    consumer().on('error', (err) => {
+        console.error(err.message);
     });
-}).catch(error => console.log(error))
+
+    consumer().on('processing_error', (err) => {
+        console.error(err.message);
+    });
+});
+

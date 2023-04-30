@@ -1,3 +1,4 @@
+// @ts-nocheck
 import moment = require('moment');
 import { TDocumentDefinitions } from 'pdfmake/interfaces';
 import { base64Logo } from './assets/logo64';

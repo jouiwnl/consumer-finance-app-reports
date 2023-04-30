@@ -1,17 +1,20 @@
-import * as amqp from 'amqplib';
 import * as dotenv from 'dotenv';
 
 import * as pdfMake from 'pdfmake/build/pdfmake.js';
 import * as pdfFonts from 'pdfmake/build/vfs_fonts.js';
-import { AppDataSource } from '../data-source';
 
 import { Report } from '../entity/Report';
 
-import * as AWS from 'aws-sdk';
 import * as moment from 'moment';
 import { createPdfParcelas } from './createDDPArcelas';
 import { createPdfContracts } from './createDDContracts';
 import { TDocumentDefinitions } from 'pdfmake/interfaces';
+
+import logger from '../logger/index';
+import { SQSService } from "../service/SQSService";
+import { S3Service } from "../service/S3Service";
+import { Message } from "aws-sdk/clients/sqs";
+import { prisma } from "../lib/prisma";
 
 (<any>pdfMake).vfs = pdfFonts.pdfMake.vfs;
 
@@ -27,72 +30,36 @@ interface ReportProps {
   type: string;
 }
 
-export default async function() {
-  try { 
-    const connection = await amqp.connect(process.env.RABBIT_MQ_ADDRESS, "heartbeat=60");
-    const channel = await connection.createChannel();
-    const queue = "finance-app-report";
+export default function() {
+  return SQSService.receiveMessage(async (message: Message) => {
+    const report: ReportProps = await JSON.parse(message.Body.toString());
+    const definitions: TDocumentDefinitions = report.type === 'P'
+      ? createPdfParcelas(report)
+      : createPdfContracts(report);
 
-    const reportRepository = AppDataSource.getRepository(Report);
+    pdfMake.createPdf(definitions).getBuffer(async document => {
+      const archive = await S3Service.uploadFile(
+        `report${moment().format('YYYY-MM-DD hh:mm:ss')}.pdf`,
+        document
+      );
 
-    await connection.createChannel();
+      const presigned = S3Service.getPresignedFromArchive(archive);
 
-    await channel.assertQueue(queue, { durable: true });
-    await channel.consume(queue, async (mensagem) => {
-      const report: ReportProps = await JSON.parse(mensagem.content.toString());
-      const definitions: TDocumentDefinitions = report.type === 'P'
-        ? createPdfParcelas(report)
-        : createPdfContracts(report);
-
-      pdfMake.createPdf(definitions).getBuffer(async document => {
-        const s3 = createAwsInstance();
-        const archive = await uploadFile(`report${moment().format('YYYY-MM-DD hh:mm:ss')}.pdf`, document);
-
-        const presigned = s3.getSignedUrl('getObject', {
-          Bucket: archive.Bucket,
-          Key: archive.Key,
-          Expires: 2592000
-        })
-
-        let saved = new Report();
-        saved.path = archive.Location;
-        saved.observation = report.observation;
-        saved.type = report.type;
-        saved.presigned_url = presigned;
-        saved.created_at = moment().toDate();
-
-        await reportRepository.save(saved).then(() => {
-          console.log('report saved with success');
-        }).catch(err => {
-          console.log(err)
+      try {
+        let toSave = await prisma.report.create({
+          data: {
+            path: archive.Location,
+            observation: report.observation,
+            type: report.type,
+            presigned_url: presigned,
+            created_at: moment().toDate()
+          }
         });
-      });
-    
-      channel.ack(mensagem);
-    })
-  } catch(error) {
-    console.log("Houve um erro: " + error);
-  }
-}
 
-function createAwsInstance() {
-  return new AWS.S3({
-    apiVersion: '2006-03-01',
-    region: process.env.AWS_REGION
-  });
-}
-
-async function uploadFile(fileName: string, fileBuffer: Buffer) {
-  const s3 = createAwsInstance();
-
-  const params = {
-    Bucket: process.env.AWS_S3_BUCKET,
-    Key: fileName,
-    Body: fileBuffer,
-    //ContentType: mimeType//geralmente se acha sozinho
-  };
-
-  const data = await s3.upload(params).promise();
-
-  return data;
+        logger.info(`Report ${toSave.id} saved with success`);
+      } catch (err) {
+        logger.error("Has an error to save report...", err)
+      }
+    });
+  })
 }
